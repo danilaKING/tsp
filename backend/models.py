@@ -51,3 +51,18 @@ class Feedback(Base):
     score = Column(Integer)  # 0–100
     analysis = Column(JSON)  # {"pros": [...], "cons": [...], "recommendations": [...]}
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProductMetric(Base):
+    __tablename__ = "product_metrics"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    csat = Column(Integer, nullable=False)  # 1-5
+    ces = Column(Integer, nullable=False)   # 1-7
+    nps = Column(Integer, nullable=False)   # 0-10
+    comment = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)

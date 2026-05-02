@@ -70,6 +70,21 @@ export async function sendAnswer(interviewId: string, answer: string) {
   return response.json();
 }
 
+export async function getHint(interviewId: string) {
+  const response = await fetch(`${API_URL}/interviews/hint`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ interview_id: interviewId }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to get hint");
+  }
+
+  return response.json();
+}
+
 export async function getUserInterviews() {
   const response = await fetch(`${API_URL}/interviews/my`, {
     headers: getAuthHeaders(),
@@ -94,6 +109,28 @@ export async function generateFeedback(interviewId: string) {
   if (!response.ok) {
     const data = await response.json();
     throw new Error(data.detail || "Failed to generate feedback");
+  }
+
+  return response.json();
+}
+
+
+export async function submitMetrics(data: {
+  interview_id: string;
+  csat: number;
+  ces: number;
+  nps: number;
+  comment?: string;
+}) {
+  const response = await fetch(`${API_URL}/metrics/submit`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to submit metrics");
   }
 
   return response.json();

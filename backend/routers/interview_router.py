@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Interview, Message, Question, User
-from schemas import StartInterview, StartInterviewResponse, SendAnswer, SendAnswerResponse
+from schemas import StartInterview, StartInterviewResponse, SendAnswer, SendAnswerResponse, HintRequest, HintResponse
 from services.question_service import get_random_questions
 from services.gigachat_service import gigachat_service
 from auth import get_current_user
@@ -125,6 +125,9 @@ async def send_answer(
     )
     db.add(user_message)
     
+    next_question_index = current_question_index + 1
+    is_last_question = next_question_index >= len(questions)
+
     # Evaluate answer using GigaChat
     evaluation = await gigachat_service.evaluate_answer(
         current_question.text,
@@ -143,9 +146,7 @@ async def send_answer(
     db.commit()
     
     # Check if there are more questions
-    next_question_index = current_question_index + 1
-    
-    if next_question_index >= len(questions):
+    if is_last_question:
         # Interview completed
         interview.status = "completed"
         interview.finished_at = datetime.utcnow()
@@ -154,6 +155,7 @@ async def send_answer(
         return SendAnswerResponse(
             type="finished",
             ai_reaction=evaluation,
+            next_question=None,
             question_number=len(questions)
         )
     else:
@@ -177,6 +179,56 @@ async def send_answer(
             question_number=next_question_index + 1
         )
 
+
+@router.post("/hint", response_model=HintResponse)
+def get_hint(
+    hint_data: HintRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    interview_id = hint_data.interview_id
+
+    interview = db.query(Interview).filter(
+        Interview.id == UUID(interview_id),
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+
+    if interview.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Interview is not active"
+        )
+
+    questions = interview_questions.get(interview_id)
+
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview questions not found"
+        )
+
+    user_answers_count = db.query(Message).filter(
+        Message.interview_id == UUID(interview_id),
+        Message.role == "user"
+    ).count()
+
+    if user_answers_count >= len(questions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active question for hint"
+        )
+
+    current_question = questions[user_answers_count]
+
+    hint = current_question.answer_hint or "Для этого вопроса подсказка не добавлена."
+
+    return HintResponse(hint=hint)
 
 @router.get("/my")
 def get_user_interviews(

@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './App.css';
 import LoginPage from './pages/LoginPage';
-import { startInterview, sendAnswer, generateFeedback, getUserInterviews } from './api';
+import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint } from './api';
+import { submitMetrics } from './api';
 
 // Types
 interface Message {
@@ -27,6 +29,15 @@ interface InterviewHistoryItem {
     score: number | null;
 }
 
+const initialMessages: Message[] = [
+    {
+        id: '0',
+        text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.',
+        type: 'assistant',
+    },
+];
+
+
 const App: React.FC = () => {
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,9 +45,7 @@ const App: React.FC = () => {
     const [history, setHistory] = useState<InterviewHistoryItem[]>([]);
 
     // Interview state
-    const [messages, setMessages] = useState<Message[]>([
-        { id: '0', text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.', type: 'assistant' }
-    ]);
+    const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [stack, setStack] = useState('Python');
     const [difficulty, setDifficulty] = useState('Лёгкий');
     const [answer, setAnswer] = useState('');
@@ -49,6 +58,14 @@ const App: React.FC = () => {
 
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+
+    const [csat, setCsat] = useState(5);
+    const [ces, setCes] = useState(7);
+    const [nps, setNps] = useState(10);
+    const [metricComment, setMetricComment] = useState('');
+    const [metricsSubmitted, setMetricsSubmitted] = useState(false);
+
+    
     // Check for existing token on mount
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -76,20 +93,29 @@ const App: React.FC = () => {
 
     const resetInterview = () => {
         setMessages([
-            { id: '0', text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.', type: 'assistant' }
+            {
+                id: Date.now().toString(),
+                text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.',
+                type: 'assistant',
+            },
         ]);
+        setAnswer('');
         setInterviewId(null);
         setIsInterviewActive(false);
+        setIsLoading(false);
         setFeedback(null);
         setStatusText('⏳ Ожидание начала интервью');
     };
 
     // Start interview
     const handleStartInterview = async () => {
-        setMessages([{ id: Date.now().toString(), text: '⏳ Запуск интервью... Пожалуйста, подождите.', type: 'assistant' }]);
+        setMessages([]);
+        setAnswer('');
+        setInterviewId(null);
         setIsLoading(true);
         setIsInterviewActive(false);
         setFeedback(null);
+        setStatusText('⏳ Запуск интервью...');
 
         try {
             const data = await startInterview(stack, difficulty);
@@ -99,6 +125,40 @@ const App: React.FC = () => {
             setStatusText('🎙️ Интервью идёт. Отвечайте на вопросы.');
         } catch (err: any) {
             setMessages([{ id: Date.now().toString(), text: `❌ Ошибка: ${err.message}`, type: 'assistant' }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+    const handleGetHint = async () => {
+        if (!interviewId || !isInterviewActive || isLoading) return;
+
+        setIsLoading(true);
+        setStatusText('💡 Получаем подсказку...');
+
+        try {
+            const data = await getHint(interviewId);
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    id: `hint-${Date.now()}`,
+                    text: `**Подсказка:** ${data.hint}`,
+                    type: 'assistant',
+                },
+            ]);
+
+            setStatusText('🎙️ Интервью идёт.');
+        } catch (err: any) {
+            setMessages(prev => [
+                ...prev,
+                {
+                    id: `hint-error-${Date.now()}`,
+                    text: `❌ Ошибка получения подсказки: ${err.message}`,
+                    type: 'assistant',
+                },
+            ]);
         } finally {
             setIsLoading(false);
         }
@@ -117,9 +177,21 @@ const App: React.FC = () => {
         try {
             const data = await sendAnswer(interviewId, userAnswer);
 
-            // Add AI reaction
-            if (data.ai_reaction) {
-                setMessages(prev => [...prev, { id: Date.now().toString(), text: data.ai_reaction, type: 'assistant' }]);
+            // Add AI reaction, but hide technical/mock transition text
+            const isTechnicalReaction =
+                data.ai_reaction &&
+                data.ai_reaction.toLowerCase().includes('next') &&
+                data.ai_reaction.toLowerCase().includes('хороший ответ');
+
+            if (data.ai_reaction && !isTechnicalReaction) {
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        id: Date.now().toString(),
+                        text: data.ai_reaction,
+                        type: 'assistant',
+                    },
+                ]);
             }
 
             if (data.type === 'finished') {
@@ -160,6 +232,55 @@ const App: React.FC = () => {
         }
     };
 
+    const handleDownloadReport = () => {
+        if (!feedback) return;
+
+        const reportText = `
+    AI Mock Interview — отчёт
+
+    Оценка: ${feedback.score}/100
+
+    Сильные стороны:
+    ${feedback.pros.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+
+    Зоны роста:
+    ${feedback.cons.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+
+    Рекомендации:
+    ${feedback.recommendations
+        .map((item, index) => `${index + 1}. ${item.topic}: ${item.description}`)
+        .join('\n')}
+    `.trim();
+
+        const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `interview-report-${new Date().toISOString().slice(0, 10)}.txt`;
+        link.click();
+
+        URL.revokeObjectURL(url);
+    };
+
+    const handleSubmitMetrics = async () => {
+        if (!interviewId) return;
+
+        try {
+            await submitMetrics({
+                interview_id: interviewId,
+                csat,
+                ces,
+                nps,
+                comment: metricComment,
+            });
+
+            setMetricsSubmitted(true);
+        } catch (err: any) {
+            alert(err.message);
+        }
+    };
+    
     if (!isAuthenticated) {
         return <LoginPage onLogin={handleLogin} />;
     }
@@ -233,7 +354,13 @@ const App: React.FC = () => {
                     <div className="chat-box" ref={chatContainerRef}>
                         {messages.map((msg) => (
                             <div key={msg.id} className={`message ${msg.type}`}>
-                                <div className="message-bubble">{msg.text}</div>
+                                <div className="message-bubble">
+                                    {msg.type === 'assistant' ? (
+                                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                                    ) : (
+                                        msg.text
+                                    )}
+                                </div>
                             </div>
                         ))}
                         {isLoading && <div className="loading-indicator">{statusText}</div>}
@@ -250,6 +377,9 @@ const App: React.FC = () => {
                                 placeholder="Ваш ответ..."
                                 disabled={!isInterviewActive || isLoading}
                             />
+                            <button onClick={handleGetHint} disabled={!isInterviewActive || isLoading} className="btn-secondary">
+                                Подсказка
+                            </button>
                             <button onClick={handleSendAnswer} disabled={!isInterviewActive || isLoading} className="btn-primary">
                                 Отправить
                             </button>
@@ -291,11 +421,80 @@ const App: React.FC = () => {
                                 ))}
                             </div>
 
-                            <button onClick={resetInterview} className="btn-primary">
-                                Начать новое интервью
+                            <div className="feedback-actions">
+                                <button onClick={handleDownloadReport} className="btn-secondary">
+                                    Скачать отчёт
+                                </button>
+
+                                <button onClick={resetInterview} className="btn-primary">
+                                    Начать новое интервью
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {feedback && !metricsSubmitted && (
+                        <div className="metrics-card">
+                            <h3>Оцените интервью</h3>
+                            <p className="metrics-subtitle">
+                                Помогите нам понять качество AI-интервьюера по CSAT, CES и NPS.
+                            </p>
+
+                            <div className="metrics-grid">
+                                <label className="metric-field">
+                                    <span>CSAT — качество вопросов AI</span>
+                                    <select value={csat} onChange={(e) => setCsat(Number(e.target.value))}>
+                                        <option value={1}>1 — Очень плохо</option>
+                                        <option value={2}>2 — Плохо</option>
+                                        <option value={3}>3 — Нормально</option>
+                                        <option value={4}>4 — Хорошо</option>
+                                        <option value={5}>5 — Отлично</option>
+                                    </select>
+                                </label>
+
+                                <label className="metric-field">
+                                    <span>CES — насколько легко было пройти интервью</span>
+                                    <select value={ces} onChange={(e) => setCes(Number(e.target.value))}>
+                                        <option value={1}>1 — Очень сложно</option>
+                                        <option value={2}>2</option>
+                                        <option value={3}>3</option>
+                                        <option value={4}>4</option>
+                                        <option value={5}>5</option>
+                                        <option value={6}>6</option>
+                                        <option value={7}>7 — Очень легко</option>
+                                    </select>
+                                </label>
+
+                                <label className="metric-field">
+                                    <span>NPS — порекомендовали бы другу</span>
+                                    <select value={nps} onChange={(e) => setNps(Number(e.target.value))}>
+                                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(value => (
+                                            <option key={value} value={value}>{value}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <textarea
+                                className="metric-comment"
+                                placeholder="Комментарий необязательно"
+                                value={metricComment}
+                                onChange={(e) => setMetricComment(e.target.value)}
+                            />
+
+                            <button onClick={handleSubmitMetrics} className="btn-primary">
+                                Отправить оценку
                             </button>
                         </div>
                     )}
+
+                    {metricsSubmitted && (
+                        <div className="feedback-card">
+                            Спасибо! Оценка интервью сохранена.
+                        </div>
+                    )}
+
+
                 </>
             )}
         </div>

@@ -37,6 +37,12 @@ class SendAnswer(BaseModel):
     interview_id: str
     answer: str
 
+class HintRequest(BaseModel):
+    interview_id: str
+
+
+class HintResponse(BaseModel):
+    hint: str
 
 class SendAnswerResponse(BaseModel):
     type: str  # "question" or "finished"
@@ -89,3 +95,22 @@ class InterviewHistoryItem(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime]
     score: Optional[int] = None
+
+
+class ProductMetricCreate(BaseModel):
+    interview_id: str
+    csat: int
+    ces: int
+    nps: int
+    comment: Optional[str] = None
+
+
+class ProductMetricResponse(BaseModel):
+    message: str
+
+
+class ProductMetricDashboard(BaseModel):
+    total_responses: int
+    csat_percent: float
+    ces_average: float
+    nps_score: float

@@ -7,7 +7,7 @@ from services.question_service import get_random_questions
 from services.gigachat_service import gigachat_service
 from auth import get_current_user
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
@@ -149,7 +149,7 @@ async def send_answer(
     if is_last_question:
         # Interview completed
         interview.status = "completed"
-        interview.finished_at = datetime.utcnow()
+        interview.finished_at = datetime.now(timezone.utc)
         db.commit()
         
         return SendAnswerResponse(

@@ -105,6 +105,11 @@ const App: React.FC = () => {
         setIsLoading(false);
         setFeedback(null);
         setStatusText('⏳ Ожидание начала интервью');
+        setMetricsSubmitted(false);
+        setCsat(5);
+        setCes(7);
+        setNps(10);
+        setMetricComment('');
     };
 
     // Start interview

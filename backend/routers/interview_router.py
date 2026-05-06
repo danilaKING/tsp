@@ -113,7 +113,7 @@ async def send_answer(
         Message.role == "user"
     ).count()
     
-    current_question_index = user_answers_count
+    current_question_index = user_answers_count - 2
     current_question = questions[current_question_index]
     
     # Save user's answer
@@ -134,7 +134,7 @@ async def send_answer(
         current_question.answer_hint or "No hint available",
         answer_data.answer
     )
-    
+    #print(f"GigaChat evaluation: {type(evaluation)} - {evaluation}")
     # Save AI evaluation
     assistant_message = Message(
         interview_id=interview.id,

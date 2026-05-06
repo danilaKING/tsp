@@ -16,7 +16,8 @@ class GigaChatService:
         self.credentials = os.getenv("GIGACHAT_CREDENTIALS")
         # Initialize GigaChat client when credentials are available
         # Пока стоит None работает заглушка
-        self.client = None  #GigaChat( #Раскомментировать и написать api ключ в credentials
+        #Раскомментировать и написать api ключ в credentials
+        self.client = None  #GigaChat( 
         # credentials="", 
         # verify_ssl_certs=False,
         # model=MODEL,
@@ -95,7 +96,7 @@ class GigaChatService:
         """Return mock response for development/testing"""
         if "структурированный отчёт" not in prompt:
            
-            return "Хороший ответ! NEXT"
+            return """Хороший ответ! NEXT"""
         
         print("Mocking GigaChat response for prompt:")
         # Mock final report

@@ -16,6 +16,23 @@ router = APIRouter(prefix="/interviews", tags=["interviews"])
 interview_questions = {}  # interview_id -> list of Question objects
 
 
+@router.delete("/{interview_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_interview(
+        interview_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    db.delete(interview)
+    db.commit()
+    return None
 @router.post("/start", response_model=StartInterviewResponse)
 def start_interview(
     interview_data: StartInterview,

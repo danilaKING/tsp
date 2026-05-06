@@ -37,7 +37,8 @@ class Interview(Base):
 class Message(Base):
     __tablename__ = "messages"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    # interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id", ondelete="CASCADE"), nullable=False)
     role = Column(Enum("user", "assistant", name="message_role"), nullable=False)
     content = Column(Text, nullable=False)
     question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id"), nullable=True)  # какой вопрос задавался
@@ -47,7 +48,8 @@ class Message(Base):
 class Feedback(Base):
     __tablename__ = "feedbacks"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    # interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id", ondelete="CASCADE"), nullable=False)
     score = Column(Integer)  # 0–100
     analysis = Column(JSON)  # {"pros": [...], "cons": [...], "recommendations": [...]}
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -57,7 +59,8 @@ class ProductMetric(Base):
     __tablename__ = "product_metrics"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    # interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id = Column(UUID(as_uuid=True), ForeignKey("interviews.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     csat = Column(Integer, nullable=False)  # 1-5

@@ -84,7 +84,19 @@ export async function getHint(interviewId: string) {
 
   return response.json();
 }
+// Удаление интервью
+export async function deleteInterview(interviewId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/interviews/${interviewId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
 
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to delete interview");
+  }
+  // 204 No Content - успех, возвращать нечего
+}
 export async function getUserInterviews() {
   const response = await fetch(`${API_URL}/interviews/my`, {
     headers: getAuthHeaders(),

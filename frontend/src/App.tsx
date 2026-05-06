@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 import LoginPage from './pages/LoginPage';
-import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint } from './api';
+import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint, deleteInterview } from './api';
 import { submitMetrics } from './api';
 
 // Types
@@ -36,7 +36,6 @@ const initialMessages: Message[] = [
         type: 'assistant',
     },
 ];
-
 
 const App: React.FC = () => {
     // Auth state
@@ -168,7 +167,16 @@ const App: React.FC = () => {
             setIsLoading(false);
         }
     };
-
+    const handleDeleteInterview = async (id: string) => {
+        if (!window.confirm('Вы уверены, что хотите удалить это интервью?')) return;
+        try {
+            await deleteInterview(id);
+            // Удаляем интервью из локального состояния
+            setHistory(prev => prev.filter(item => item.id !== id));
+        } catch (err: any) {
+            alert(`Ошибка удаления: ${err.message}`);
+        }
+    };
     // Send answer
     const handleSendAnswer = async () => {
         if (!answer.trim() || !isInterviewActive || !interviewId) return;
@@ -314,27 +322,42 @@ const App: React.FC = () => {
                         <p className="no-data">У вас пока нет прошедших интервью.</p>
                     ) : (
                         <table className="history-table">
-                            <thead>
-                                <tr>
-                                    <th>Дата</th>
-                                    <th>Стек</th>
-                                    <th>Сложность</th>
-                                    <th>Статус</th>
-                                    <th>Оценка</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {history.map((item) => (
-                                    <tr key={item.id}>
-                                        <td>{new Date(item.started_at).toLocaleDateString('ru-RU')}</td>
-                                        <td>{item.stack}</td>
-                                        <td>{item.difficulty}</td>
-                                        <td>{item.status === 'completed' ? '✅ Завершено' : item.status === 'active' ? '🔄 Активно' : '❌ Прервано'}</td>
-                                        <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Стек</th>
+            <th>Сложность</th>
+            <th>Статус</th>
+            <th>Оценка</th>
+            <th>Действия</th>   {/* новый столбец */}
+        </tr>
+    </thead>
+    <tbody>
+        {history.map((item) => (
+            <tr key={item.id}>
+                <td>{new Date(item.started_at).toLocaleDateString('ru-RU')}</td>
+                <td>{item.stack}</td>
+                <td>{item.difficulty}</td>
+                <td>
+                    {item.status === 'completed'
+                        ? '✅ Завершено'
+                        : item.status === 'active'
+                            ? '🔄 Активно'
+                            : '❌ Прервано'}
+                </td>
+                <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
+                <td>
+                    <button
+                        onClick={() => handleDeleteInterview(item.id)}
+                        className="btn-danger"
+                    >
+                        🗑️ Удалить
+                    </button>
+                </td>   {/* кнопка удаления */}
+            </tr>
+        ))}
+    </tbody>
+</table>
                     )}
                 </div>
             ) : (

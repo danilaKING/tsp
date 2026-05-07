@@ -95,8 +95,7 @@ class GigaChatService:
     def _mock_response(self, prompt: str) -> str:
         """Return mock response for development/testing"""
         if "структурированный отчёт" not in prompt:
-           
-            return """Хороший ответ! NEXT"""
+            return "**Хороший** ответ!"
         
         print("Mocking GigaChat response for prompt:")
         # Mock final report

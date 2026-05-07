@@ -4,6 +4,8 @@ import './App.css';
 import LoginPage from './pages/LoginPage';
 import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint, deleteInterview } from './api';
 import { submitMetrics } from './api';
+import NotificationContainer from './components/NotificationContainer';
+import { NotificationProps } from './components/Notification';
 
 // Types
 interface Message {
@@ -55,6 +57,9 @@ const App: React.FC = () => {
     const [statusText, setStatusText] = useState('⏳ Ожидание начала интервью');
     const [feedback, setFeedback] = useState<FeedbackData | null>(null);
 
+    // Notification state
+    const [notifications, setNotifications] = useState<NotificationProps[]>([]);
+
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
 
@@ -63,6 +68,18 @@ const App: React.FC = () => {
     const [nps, setNps] = useState(10);
     const [metricComment, setMetricComment] = useState('');
     const [metricsSubmitted, setMetricsSubmitted] = useState(false);
+
+    // Show notification helper
+    const showNotification = (type: 'error' | 'success' | 'warning' | 'info', message: string, duration: number = 4000) => {
+        const id = `notif-${Date.now()}-${Math.random()}`;
+        const notification: NotificationProps = { id, type, message, duration, onClose: removeNotification };
+        setNotifications(prev => [...prev, notification]);
+    };
+
+    // Remove notification helper
+    const removeNotification = (id: string) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    };
 
     
     // Check for existing token on mount
@@ -105,6 +122,8 @@ const App: React.FC = () => {
         setFeedback(null);
         setStatusText('⏳ Ожидание начала интервью');
         setMetricsSubmitted(false);
+        setNotifications([]);
+        setMessages([]);
         setCsat(5);
         setCes(7);
         setNps(10);
@@ -119,6 +138,8 @@ const App: React.FC = () => {
         setIsLoading(true);
         setIsInterviewActive(false);
         setFeedback(null);
+        setNotifications([]);
+        setMetricsSubmitted(false);
         setStatusText('⏳ Запуск интервью...');
 
         try {
@@ -128,7 +149,7 @@ const App: React.FC = () => {
             setIsInterviewActive(true);
             setStatusText('🎙️ Интервью идёт. Отвечайте на вопросы.');
         } catch (err: any) {
-            setMessages([{ id: Date.now().toString(), text: `❌ Ошибка: ${err.message}`, type: 'assistant' }]);
+            showNotification('error', `Не удалось начать интервью: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -155,14 +176,7 @@ const App: React.FC = () => {
 
             setStatusText('🎙️ Интервью идёт.');
         } catch (err: any) {
-            setMessages(prev => [
-                ...prev,
-                {
-                    id: `hint-error-${Date.now()}`,
-                    text: `❌ Ошибка получения подсказки: ${err.message}`,
-                    type: 'assistant',
-                },
-            ]);
+            showNotification('error', `Ошибка получения подсказки: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -173,8 +187,9 @@ const App: React.FC = () => {
             await deleteInterview(id);
             // Удаляем интервью из локального состояния
             setHistory(prev => prev.filter(item => item.id !== id));
+            showNotification('success', 'Интервью успешно удалено');
         } catch (err: any) {
-            alert(`Ошибка удаления: ${err.message}`);
+            showNotification('error', `Ошибка удаления: ${err.message}`);
         }
     };
     // Send answer
@@ -218,7 +233,7 @@ const App: React.FC = () => {
                     setFeedback(feedbackData.analysis);
                     setStatusText('✅ Интервью завершено. Отчёт готов!');
                 } catch (err: any) {
-                    setMessages(prev => [...prev, { id: Date.now().toString(), text: `❌ Ошибка генерации отчёта: ${err.message}`, type: 'assistant' }]);
+                    showNotification('error', `Ошибка генерации отчёта: ${err.message}`);
                 }
             } else {
                 // Next question
@@ -228,7 +243,7 @@ const App: React.FC = () => {
                 setStatusText('🎙️ Интервью идёт.');
             }
         } catch (err: any) {
-            setMessages(prev => [...prev, { id: Date.now().toString(), text: `❌ Ошибка: ${err.message}`, type: 'assistant' }]);
+            showNotification('error', `Ошибка при отправке ответа: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -241,7 +256,7 @@ const App: React.FC = () => {
             setHistory(data);
             setShowHistory(true);
         } catch (err: any) {
-            alert(`Ошибка загрузки истории: ${err.message}`);
+            showNotification('error', `Ошибка загрузки истории: ${err.message}`);
         }
     };
 
@@ -289,8 +304,9 @@ const App: React.FC = () => {
             });
 
             setMetricsSubmitted(true);
+            showNotification('success', 'Спасибо за оценку!');
         } catch (err: any) {
-            alert(err.message);
+            showNotification('error', `Ошибка отправки оценки: ${err.message}`);
         }
     };
     
@@ -300,6 +316,8 @@ const App: React.FC = () => {
 
     return (
         <div className="container">
+            <NotificationContainer notifications={notifications} onClose={removeNotification} />
+            
             <header className="app-header">
                 <h1>AI Mock Interview</h1>
                 <div className="header-actions">

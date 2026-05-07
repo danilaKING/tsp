@@ -30,6 +30,7 @@ class Interview(Base):
     stack = Column(String(50))
     difficulty = Column(String(20))
     status = Column(Enum("active", "completed", "aborted", name="interview_status"), default="active")
+    questions = Column(JSON, nullable=True)  # Store list of question IDs as JSON
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at = Column(DateTime, nullable=True)
 

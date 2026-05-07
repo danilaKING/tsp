@@ -12,8 +12,31 @@ import json
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
-# In-memory storage for interview questions (can be replaced with Redis or DB column)
-interview_questions = {}  # interview_id -> list of Question objects
+
+def get_interview_questions(interview: Interview, db: Session) -> list:
+    """Load questions for an interview from database"""
+    if not interview.questions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview questions not found"
+        )
+    
+    question_ids = interview.questions
+    questions = db.query(Question).filter(
+        Question.id.in_([UUID(qid) for qid in question_ids])
+    ).all()
+    
+    if len(questions) != len(question_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Some interview questions were deleted"
+        )
+    
+    # Sort questions by the order they were selected
+    question_map = {str(q.id): q for q in questions}
+    ordered_questions = [question_map[qid] for qid in question_ids]
+    
+    return ordered_questions
 
 
 @router.delete("/{interview_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -54,19 +77,18 @@ def start_interview(
             detail=f"No questions found for stack='{interview_data.stack}' and difficulty='{interview_data.difficulty}'"
         )
     
-    # Create interview record
+    # Create interview record with questions stored in JSON
+    question_ids = [str(q.id) for q in questions]
     interview = Interview(
         user_id=current_user.id,
         stack=interview_data.stack,
         difficulty=interview_data.difficulty,
-        status="active"
+        status="active",
+        questions=question_ids  # Store question IDs in DB
     )
     db.add(interview)
     db.commit()
     db.refresh(interview)
-    
-    # Store questions in memory
-    interview_questions[str(interview.id)] = questions
     
     # Get first question
     first_question = questions[0]
@@ -116,13 +138,8 @@ async def send_answer(
             detail="Interview is not active"
         )
     
-    # Get questions for this interview
-    questions = interview_questions.get(interview_id)
-    if not questions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview questions not found"
-        )
+    # Load questions from database
+    questions = get_interview_questions(interview, db)
     
     # Count user answers to determine current question number
     user_answers_count = db.query(Message).filter(
@@ -130,7 +147,16 @@ async def send_answer(
         Message.role == "user"
     ).count()
     
-    current_question_index = user_answers_count - 2
+    # Current question index = number of already answered questions
+    # First answer (user_answers_count=0) → question index 0
+    # Second answer (user_answers_count=1) → question index 1
+    current_question_index = user_answers_count
+    if current_question_index < 0 or current_question_index >= len(questions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid question index: {current_question_index} (total questions: {len(questions)}, user answers: {user_answers_count})"
+        )
+    
     current_question = questions[current_question_index]
     
     # Save user's answer
@@ -222,13 +248,8 @@ def get_hint(
             detail="Interview is not active"
         )
 
-    questions = interview_questions.get(interview_id)
-
-    if not questions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview questions not found"
-        )
+    # Load questions from database
+    questions = get_interview_questions(interview, db)
 
     user_answers_count = db.query(Message).filter(
         Message.interview_id == UUID(interview_id),

@@ -514,7 +514,7 @@ const App: React.FC = () => {
                                     Скачать отчёт
                                 </button>
 
-                                <button onClick={resetInterview} className="btn-primary">
+                                <button onClick={handleStartInterview} className="btn-primary">
                                     Начать новое интервью
                                 </button>
                             </div>

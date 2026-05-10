@@ -351,7 +351,7 @@ const App: React.FC = () => {
                 <h1>AI Mock Interview</h1>
                 <div className="header-actions">
                     <button onClick={handleLoadHistory} className="btn-secondary">
-                        📋 История
+                        История
                     </button>
                     <button onClick={handleLogout} className="btn-logout">
                         Выйти
@@ -398,7 +398,7 @@ const App: React.FC = () => {
                                                 onClick={() => handleDeleteInterview(item.id)}
                                                 className="btn-danger"
                                             >
-                                                🗑️ Удалить
+                                                Удалить
                                             </button>
                                         </td>
                                     </tr>
@@ -476,12 +476,12 @@ const App: React.FC = () => {
 
                     {feedback && (
                         <div className="feedback-section">
-                            <h2>📊 Результаты интервью</h2>
+                            <h2>✔ Результаты интервью</h2>
                             <div className="score-display">{feedback.score}/100</div>
 
                             <div className="feedback-grid">
                                 <div className="feedback-card pros">
-                                    <h3>✅ Сильные стороны</h3>
+                                    <h3>☑ Сильные стороны</h3>
                                     <ul>
                                         {feedback.pros.map((pro, idx) => (
                                             <li key={idx}>{pro}</li>
@@ -490,7 +490,7 @@ const App: React.FC = () => {
                                 </div>
 
                                 <div className="feedback-card cons">
-                                    <h3>⚠️ Зоны роста</h3>
+                                    <h3>⚠ Зоны роста</h3>
                                     <ul>
                                         {feedback.cons.map((con, idx) => (
                                             <li key={idx}>{con}</li>
@@ -500,7 +500,7 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="recommendations">
-                                <h3>📚 Рекомендации</h3>
+                                <h3>🕮 Рекомендации</h3>
                                 {feedback.recommendations.map((rec, idx) => (
                                     <div key={idx} className="recommendation-item">
                                         <strong>{rec.topic}</strong>

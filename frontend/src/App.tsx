@@ -6,6 +6,7 @@ import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHin
 import { submitMetrics } from './api';
 import NotificationContainer from './components/NotificationContainer';
 import { NotificationProps } from './components/Notification';
+import CodeEditorModal from './components/CodeEditorModal';
 
 // Types
 interface Message {
@@ -62,12 +63,25 @@ const App: React.FC = () => {
 
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
-
     const [csat, setCsat] = useState(5);
     const [ces, setCes] = useState(7);
     const [nps, setNps] = useState(10);
     const [metricComment, setMetricComment] = useState('');
     const [metricsSubmitted, setMetricsSubmitted] = useState(false);
+
+    // Code editor state
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [codeAnswer, setCodeAnswer] = useState('');
+
+    const stackToLanguage = (stack: string): string => {
+        const map: Record<string, string> = {
+            'Python': 'python',
+            'JavaScript': 'javascript',
+            'SQL': 'sql',
+            'Алгоритмы': 'python',   
+        };
+        return map[stack] || 'python';
+    };
 
     // Show notification helper
     const showNotification = (type: 'error' | 'success' | 'warning' | 'info', message: string, duration: number = 4000) => {
@@ -81,7 +95,6 @@ const App: React.FC = () => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     };
 
-    
     // Check for existing token on mount
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -123,7 +136,6 @@ const App: React.FC = () => {
         setStatusText('⏳ Ожидание начала интервью');
         setMetricsSubmitted(false);
         setNotifications([]);
-        setMessages([]);
         setCsat(5);
         setCes(7);
         setNps(10);
@@ -155,7 +167,6 @@ const App: React.FC = () => {
         }
     };
 
-
     const handleGetHint = async () => {
         if (!interviewId || !isInterviewActive || isLoading) return;
 
@@ -181,17 +192,18 @@ const App: React.FC = () => {
             setIsLoading(false);
         }
     };
+
     const handleDeleteInterview = async (id: string) => {
         if (!window.confirm('Вы уверены, что хотите удалить это интервью?')) return;
         try {
             await deleteInterview(id);
-            // Удаляем интервью из локального состояния
             setHistory(prev => prev.filter(item => item.id !== id));
             showNotification('success', 'Интервью успешно удалено');
         } catch (err: any) {
             showNotification('error', `Ошибка удаления: ${err.message}`);
         }
     };
+
     // Send answer
     const handleSendAnswer = async () => {
         if (!answer.trim() || !isInterviewActive || !interviewId) return;
@@ -226,7 +238,7 @@ const App: React.FC = () => {
                 // Interview completed
                 setIsInterviewActive(false);
                 setStatusText('✅ Интервью завершено. Генерация отчёта...');
-                
+
                 // Generate feedback
                 try {
                     const feedbackData = await generateFeedback(interviewId);
@@ -276,8 +288,8 @@ const App: React.FC = () => {
 
     Рекомендации:
     ${feedback.recommendations
-        .map((item, index) => `${index + 1}. ${item.topic}: ${item.description}`)
-        .join('\n')}
+                .map((item, index) => `${index + 1}. ${item.topic}: ${item.description}`)
+                .join('\n')}
     `.trim();
 
         const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
@@ -309,7 +321,24 @@ const App: React.FC = () => {
             showNotification('error', `Ошибка отправки оценки: ${err.message}`);
         }
     };
-    
+
+    const openCodeEditor = () => {
+        setCodeAnswer(''); 
+        setIsEditorOpen(true);
+    };
+
+    const handleSaveCode = (code: string, lang: string) => {
+        setAnswer(prev => {
+            const trimmed = prev.trim();
+            const codeBlock = `\`\`\`${lang}\n${code}\n\`\`\``;
+            return trimmed ? `${trimmed}\n${codeBlock}` : codeBlock;
+        });
+    };
+
+    const handleCloseEditor = () => {
+        setIsEditorOpen(false);
+    };
+
     if (!isAuthenticated) {
         return <LoginPage onLogin={handleLogin} />;
     }
@@ -317,7 +346,7 @@ const App: React.FC = () => {
     return (
         <div className="container">
             <NotificationContainer notifications={notifications} onClose={removeNotification} />
-            
+
             <header className="app-header">
                 <h1>AI Mock Interview</h1>
                 <div className="header-actions">
@@ -340,42 +369,42 @@ const App: React.FC = () => {
                         <p className="no-data">У вас пока нет прошедших интервью.</p>
                     ) : (
                         <table className="history-table">
-    <thead>
-        <tr>
-            <th>Дата</th>
-            <th>Стек</th>
-            <th>Сложность</th>
-            <th>Статус</th>
-            <th>Оценка</th>
-            <th>Действия</th>   {/* новый столбец */}
-        </tr>
-    </thead>
-    <tbody>
-        {history.map((item) => (
-            <tr key={item.id}>
-                <td>{new Date(item.started_at).toLocaleDateString('ru-RU')}</td>
-                <td>{item.stack}</td>
-                <td>{item.difficulty}</td>
-                <td>
-                    {item.status === 'completed'
-                        ? '✅ Завершено'
-                        : item.status === 'active'
-                            ? '🔄 Активно'
-                            : '❌ Прервано'}
-                </td>
-                <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
-                <td>
-                    <button
-                        onClick={() => handleDeleteInterview(item.id)}
-                        className="btn-danger"
-                    >
-                        🗑️ Удалить
-                    </button>
-                </td>   {/* кнопка удаления */}
-            </tr>
-        ))}
-    </tbody>
-</table>
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Стек</th>
+                                    <th>Сложность</th>
+                                    <th>Статус</th>
+                                    <th>Оценка</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {history.map((item) => (
+                                    <tr key={item.id}>
+                                        <td>{new Date(item.started_at).toLocaleDateString('ru-RU')}</td>
+                                        <td>{item.stack}</td>
+                                        <td>{item.difficulty}</td>
+                                        <td>
+                                            {item.status === 'completed'
+                                                ? '✅ Завершено'
+                                                : item.status === 'active'
+                                                    ? '🔄 Активно'
+                                                    : '❌ Прервано'}
+                                        </td>
+                                        <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
+                                        <td>
+                                            <button
+                                                onClick={() => handleDeleteInterview(item.id)}
+                                                className="btn-danger"
+                                            >
+                                                🗑️ Удалить
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     )}
                 </div>
             ) : (
@@ -412,31 +441,44 @@ const App: React.FC = () => {
                         {isLoading && <div className="loading-indicator">{statusText}</div>}
                     </div>
 
-                    {isInterviewActive && (
-                        <div className="input-area">
-                            <input
-                                type="text"
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSendAnswer()}
-                                className="answer-input"
-                                placeholder="Ваш ответ..."
-                                disabled={!isInterviewActive || isLoading}
-                            />
-                            <button onClick={handleGetHint} disabled={!isInterviewActive || isLoading} className="btn-secondary">
-                                Подсказка
-                            </button>
-                            <button onClick={handleSendAnswer} disabled={!isInterviewActive || isLoading} className="btn-primary">
-                                Отправить
-                            </button>
-                        </div>
-                    )}
+                        {isInterviewActive && (
+                            <div className="input-area">
+                                <input
+                                    type="text"
+                                    value={answer}
+                                    onChange={(e) => setAnswer(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendAnswer()}
+                                    className="answer-input"
+                                    placeholder="Ваш ответ..."
+                                    disabled={!isInterviewActive || isLoading}
+                                />
+                                <button
+                                    onClick={openCodeEditor}
+                                    disabled={!isInterviewActive || isLoading}
+                                    className="btn-code-editor"
+                                    title="Открыть редактор кода"
+                                >
+                                    {'</>'}
+                                </button>
+                                <button
+                                    onClick={handleGetHint}
+                                    disabled={!isInterviewActive || isLoading}
+                                    className="btn-hint"
+                                    title="Получить подсказку"
+                                >
+                                    Подсказка
+                                </button>
+                                <button onClick={handleSendAnswer} disabled={!isInterviewActive || isLoading} className="btn-primary">
+                                    Отправить
+                                </button>
+                            </div>
+                        )}
 
                     {feedback && (
                         <div className="feedback-section">
                             <h2>📊 Результаты интервью</h2>
                             <div className="score-display">{feedback.score}/100</div>
-                            
+
                             <div className="feedback-grid">
                                 <div className="feedback-card pros">
                                     <h3>✅ Сильные стороны</h3>
@@ -446,7 +488,7 @@ const App: React.FC = () => {
                                         ))}
                                     </ul>
                                 </div>
-                                
+
                                 <div className="feedback-card cons">
                                     <h3>⚠️ Зоны роста</h3>
                                     <ul>
@@ -540,7 +582,13 @@ const App: React.FC = () => {
                         </div>
                     )}
 
-
+                        <CodeEditorModal
+                            isOpen={isEditorOpen}
+                            initialCode={codeAnswer}
+                            language={stackToLanguage(stack)}
+                            onClose={handleCloseEditor}
+                            onSave={handleSaveCode}
+                        />
                 </>
             )}
         </div>

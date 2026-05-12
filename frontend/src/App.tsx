@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 import LoginPage from './pages/LoginPage';
-import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint, deleteInterview } from './api';
+import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint, deleteInterview, getInterviewDetails } from './api';
 import { submitMetrics } from './api';
 import NotificationContainer from './components/NotificationContainer';
 import { NotificationProps } from './components/Notification';
@@ -204,6 +204,45 @@ const App: React.FC = () => {
         }
     };
 
+    const handleResumeInterview = async (item: InterviewHistoryItem) => {
+        try {
+            const data = await getInterviewDetails(item.id);
+
+            const loadedMessages: Message[] = data.messages.map((m: { id: string; role: string; content: string }) => ({
+                id: m.id,
+                text: m.content,
+                type: m.role as 'user' | 'assistant',
+            }));
+
+            setMessages(loadedMessages.length > 0 ? loadedMessages : initialMessages);
+            setInterviewId(item.id);
+            setStack(item.stack);
+            setDifficulty(item.difficulty);
+            setAnswer('');
+            setFeedback(null);
+            setMetricsSubmitted(false);
+            setNotifications([]);
+
+            if (item.status === 'active') {
+                setIsInterviewActive(true);
+                setStatusText('🎙️ Интервью идёт. Отвечайте на вопросы.');
+            } else if (item.status === 'completed') {
+                setIsInterviewActive(false);
+                setStatusText('✅ Интервью завершено.');
+                if (data.feedback) {
+                    setFeedback(data.feedback);
+                }
+            } else {
+                setIsInterviewActive(false);
+                setStatusText('❌ Интервью прервано.');
+            }
+
+            setShowHistory(false);
+        } catch (err: any) {
+            showNotification('error', `Ошибка загрузки интервью: ${err.message}`);
+        }
+    };
+
     // Send answer
     const handleSendAnswer = async () => {
         if (!answer.trim() || !isInterviewActive || !interviewId) return;
@@ -393,7 +432,15 @@ const App: React.FC = () => {
                                                     : '❌ Прервано'}
                                         </td>
                                         <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
-                                        <td>
+                                        <td className="history-actions">
+                                            {item.status !== 'aborted' && (
+                                                <button
+                                                    onClick={() => handleResumeInterview(item)}
+                                                    className="btn-secondary"
+                                                >
+                                                    {item.status === 'active' ? 'Продолжить' : 'Просмотреть'}
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => handleDeleteInterview(item.id)}
                                                 className="btn-danger"

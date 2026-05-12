@@ -299,5 +299,50 @@ def get_user_interviews(
             "finished_at": interview.finished_at,
             "score": feedback.score if feedback else None
         })
-    
+
     return result
+
+
+@router.get("/{interview_id}")
+def get_interview_details(
+    interview_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get full interview details including messages and feedback"""
+    from models import Feedback
+
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.interview_id == interview_id)
+        .order_by(Message.timestamp)
+        .all()
+    )
+
+    user_answers_count = sum(1 for m in messages if m.role == "user")
+
+    feedback = db.query(Feedback).filter(
+        Feedback.interview_id == interview_id
+    ).first()
+
+    return {
+        "id": str(interview.id),
+        "stack": interview.stack,
+        "difficulty": interview.difficulty,
+        "status": interview.status,
+        "messages": [
+            {"id": str(m.id), "role": m.role, "content": m.content}
+            for m in messages
+        ],
+        "current_question_number": user_answers_count + 1,
+        "total_questions": len(interview.questions or []),
+        "feedback": feedback.analysis if feedback else None,
+    }

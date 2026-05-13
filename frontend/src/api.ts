@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem("token");
@@ -105,6 +105,19 @@ export async function getUserInterviews() {
   if (!response.ok) {
     const data = await response.json();
     throw new Error(data.detail || "Failed to fetch interviews");
+  }
+
+  return response.json();
+}
+
+export async function getInterviewDetails(interviewId: string) {
+  const response = await fetch(`${API_URL}/interviews/${interviewId}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to fetch interview details");
   }
 
   return response.json();

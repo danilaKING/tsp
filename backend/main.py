@@ -12,11 +12,15 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173",
-        "http://localhost:3000",
-        ],  # Vite default ports
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3000",   # альтернативный dev-порт
+        "http://localhost",        # Docker (nginx, порт 80)
+        "http://localhost:80",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
+    ],
     allow_credentials=True,
-    #allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

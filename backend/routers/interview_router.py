@@ -346,3 +346,40 @@ def get_interview_details(
         "total_questions": len(interview.questions or []),
         "feedback": feedback.analysis if feedback else None,
     }
+@router.post("/{interview_id}/exit")
+def exit_interview(
+    interview_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Manually exit/terminate an active interview"""
+    try:
+        uuid_id = UUID(interview_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid UUID")
+
+    # Find interview
+    interview = db.query(Interview).filter(
+        Interview.id == uuid_id,
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+
+    if interview.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Interview is not active"
+        )
+
+    # Mark as completed (or you could add a 'cancelled' status if preferred)
+    interview.status = "completed"
+    interview.finished_at = datetime.utcnow()
+    db.commit()
+
+    return {"message": "Interview exited successfully"}
+    return result

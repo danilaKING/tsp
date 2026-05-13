@@ -1,7 +1,9 @@
 from typing import Optional
 import os
 from dotenv import load_dotenv
-
+from gigachat.models import Chat, Messages, MessagesRole
+from gigachat import GigaChat
+import json
 load_dotenv()
 
 # We'll use the gigachat library for API calls
@@ -9,9 +11,18 @@ load_dotenv()
 
 class GigaChatService:
     def __init__(self):
+        MODEL = "GigaChat:latest"
+        REQUEST_TIMEOUT = 30
         self.credentials = os.getenv("GIGACHAT_CREDENTIALS")
         # Initialize GigaChat client when credentials are available
-        self.client = None
+        # Пока стоит None работает заглушка
+        #Раскомментировать и написать api ключ в credentials
+        self.client = None  #GigaChat( 
+        # credentials="", 
+        # verify_ssl_certs=False,
+        # model=MODEL,
+        # timeout=REQUEST_TIMEOUT
+        #)
     
     def _get_client(self):
         """Initialize GigaChat client if not already done"""
@@ -28,11 +39,17 @@ class GigaChatService:
         Evaluate a user's answer to a question.
         Returns a short response with evaluation and "NEXT" keyword.
         """
-        prompt = f"""Вопрос: {question_text}
-Эталонный ответ: {answer_hint}
+        prompt = f"""Ты — технический интервьюер. Твоя задача — оценить ответ кандидата на вопрос.
+
+Вопрос: {question_text}
+
+Правильный ответ (только для твоей оценки, кандидат его не видит): {answer_hint}
+
 Ответ кандидата: {user_answer}
 
-Оцени ответ кандидата. Если правильный — похвали и скажи "NEXT".
+Оцени ТОЛЬКО ответ кандидата, сравнив его с правильным ответом.
+Не оценивай и не критикуй правильный ответ — он дан лишь как критерий.
+Если ответ кандидата правильный — похвали и скажи "NEXT".
 Если неточный — укажи на ошибку коротко (1-2 предложения) и скажи "NEXT".
 Если совсем неверный — объясни кратко и скажи "NEXT".
 """
@@ -67,27 +84,51 @@ class GigaChatService:
             return self._mock_response(prompt)
         
         try:
+            payload = Chat(messages=[{"role": "user", "content": prompt}], temperature=0.7)
+            
             response = client.chat(
-                messages=[{"role": "user", "content": prompt}],
-                model="GigaChat"
+                payload=payload
+                #messages=[{"role": "user", "content": prompt}],
+                #model="GigaChat"
             )
+            
             return response.choices[0].message.content
         except Exception as e:
             print(f"GigaChat API error: {e}")
+            
             return self._mock_response(prompt)
     
     def _mock_response(self, prompt: str) -> str:
         """Return mock response for development/testing"""
-        if "NEXT" in prompt:
-            return "Хороший ответ! NEXT"
+        if "структурированный отчёт" not in prompt:
+            return "**Хороший** ответ!"
         
+        print("Mocking GigaChat response for prompt:")
         # Mock final report
+       
         return """{
-  "score": 75,
-  "pros": ["Хорошее знание базовых концепций", "Уверенные ответы на лёгкие вопросы"],
-  "cons": ["Недостаточная глубина в сложных темах", "Пропущены некоторые детали"],
-  "recommendations": [{"topic": "Углублённое изучение GIL", "description": "Рекомендуем изучить документацию Python по многопоточности"}]
-}"""
+            "score": 75,
+            "pros": [
+                "Хорошее знание базовых концепций", 
+                "Уверенные ответы на лёгкие вопросы"
+            ],
+            "cons": [
+                "Недостаточная глубина в сложных темах", 
+                "Пропущены некоторые детали"
+            ],
+            "recommendations": [
+                {
+                    "topic": "Углублённое изучение GIL", 
+                    "description": "Рекомендуем изучить документацию Python по многопоточности"
+                }
+            ]
+        }"""
+#         return json.dumps({
+#   "score": 75,
+#   "pros": ["Хорошее знание базовых концепций", "Уверенные ответы на лёгкие вопросы"],
+#   "cons": ["Недостаточная глубина в сложных темах", "Пропущены некоторые детали"],
+#   "recommendations": [{"topic": "Углублённое изучение GIL", "description": "Рекомендуем изучить документацию Python по многопоточности"}]
+# })
 
 
 # Singleton instance

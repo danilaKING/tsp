@@ -1,0 +1,63 @@
+.notifications-container {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 360px;
+}
+
+.notification {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border: 1px solid #e5e7eb;
+    font-size: 0.9rem;
+    color: #1e293b;
+    pointer-events: auto;
+}
+
+.notification-icon {
+    font-size: 1.1rem;
+}
+
+.notification-message {
+    flex: 1;
+    word-break: break-word;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 2px;
+}
+
+    .notification-close:hover {
+        color: #0f172a;
+    }
+
+/* Типы уведомлений */
+.notification-error {
+    border-left: 4px solid #ef4444;
+}
+
+.notification-success {
+    border-left: 4px solid #10b981;
+}
+
+.notification-warning {
+    border-left: 4px solid #f59e0b;
+}
+
+.notification-info {
+    border-left: 4px solid #3b82f6;
+}

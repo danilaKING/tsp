@@ -2,20 +2,60 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Interview, Message, Question, User
-from schemas import StartInterview, StartInterviewResponse, SendAnswer, SendAnswerResponse
+from schemas import StartInterview, StartInterviewResponse, SendAnswer, SendAnswerResponse, HintRequest, HintResponse
 from services.question_service import get_random_questions
 from services.gigachat_service import gigachat_service
 from auth import get_current_user
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
-# In-memory storage for interview questions (can be replaced with Redis or DB column)
-interview_questions = {}  # interview_id -> list of Question objects
+
+def get_interview_questions(interview: Interview, db: Session) -> list:
+    """Load questions for an interview from database"""
+    if not interview.questions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview questions not found"
+        )
+    
+    question_ids = interview.questions
+    questions = db.query(Question).filter(
+        Question.id.in_([UUID(qid) for qid in question_ids])
+    ).all()
+    
+    if len(questions) != len(question_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Some interview questions were deleted"
+        )
+    
+    # Sort questions by the order they were selected
+    question_map = {str(q.id): q for q in questions}
+    ordered_questions = [question_map[qid] for qid in question_ids]
+    
+    return ordered_questions
 
 
+@router.delete("/{interview_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_interview(
+        interview_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    db.delete(interview)
+    db.commit()
+    return None
 @router.post("/start", response_model=StartInterviewResponse)
 def start_interview(
     interview_data: StartInterview,
@@ -37,19 +77,18 @@ def start_interview(
             detail=f"No questions found for stack='{interview_data.stack}' and difficulty='{interview_data.difficulty}'"
         )
     
-    # Create interview record
+    # Create interview record with questions stored in JSON
+    question_ids = [str(q.id) for q in questions]
     interview = Interview(
         user_id=current_user.id,
         stack=interview_data.stack,
         difficulty=interview_data.difficulty,
-        status="active"
+        status="active",
+        questions=question_ids  # Store question IDs in DB
     )
     db.add(interview)
     db.commit()
     db.refresh(interview)
-    
-    # Store questions in memory
-    interview_questions[str(interview.id)] = questions
     
     # Get first question
     first_question = questions[0]
@@ -99,13 +138,8 @@ async def send_answer(
             detail="Interview is not active"
         )
     
-    # Get questions for this interview
-    questions = interview_questions.get(interview_id)
-    if not questions:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview questions not found"
-        )
+    # Load questions from database
+    questions = get_interview_questions(interview, db)
     
     # Count user answers to determine current question number
     user_answers_count = db.query(Message).filter(
@@ -113,7 +147,16 @@ async def send_answer(
         Message.role == "user"
     ).count()
     
+    # Current question index = number of already answered questions
+    # First answer (user_answers_count=0) → question index 0
+    # Second answer (user_answers_count=1) → question index 1
     current_question_index = user_answers_count
+    if current_question_index < 0 or current_question_index >= len(questions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid question index: {current_question_index} (total questions: {len(questions)}, user answers: {user_answers_count})"
+        )
+    
     current_question = questions[current_question_index]
     
     # Save user's answer
@@ -125,13 +168,16 @@ async def send_answer(
     )
     db.add(user_message)
     
+    next_question_index = current_question_index + 1
+    is_last_question = next_question_index >= len(questions)
+
     # Evaluate answer using GigaChat
     evaluation = await gigachat_service.evaluate_answer(
         current_question.text,
         current_question.answer_hint or "No hint available",
         answer_data.answer
     )
-    
+    #print(f"GigaChat evaluation: {type(evaluation)} - {evaluation}")
     # Save AI evaluation
     assistant_message = Message(
         interview_id=interview.id,
@@ -143,17 +189,16 @@ async def send_answer(
     db.commit()
     
     # Check if there are more questions
-    next_question_index = current_question_index + 1
-    
-    if next_question_index >= len(questions):
+    if is_last_question:
         # Interview completed
         interview.status = "completed"
-        interview.finished_at = datetime.utcnow()
+        interview.finished_at = datetime.now(timezone.utc)
         db.commit()
         
         return SendAnswerResponse(
             type="finished",
             ai_reaction=evaluation,
+            next_question=None,
             question_number=len(questions)
         )
     else:
@@ -177,6 +222,51 @@ async def send_answer(
             question_number=next_question_index + 1
         )
 
+
+@router.post("/hint", response_model=HintResponse)
+def get_hint(
+    hint_data: HintRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    interview_id = hint_data.interview_id
+
+    interview = db.query(Interview).filter(
+        Interview.id == UUID(interview_id),
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+
+    if interview.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Interview is not active"
+        )
+
+    # Load questions from database
+    questions = get_interview_questions(interview, db)
+
+    user_answers_count = db.query(Message).filter(
+        Message.interview_id == UUID(interview_id),
+        Message.role == "user"
+    ).count()
+
+    if user_answers_count >= len(questions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active question for hint"
+        )
+
+    current_question = questions[user_answers_count]
+
+    hint = current_question.answer_hint or "Для этого вопроса подсказка не добавлена."
+
+    return HintResponse(hint=hint)
 
 @router.get("/my")
 def get_user_interviews(
@@ -209,5 +299,50 @@ def get_user_interviews(
             "finished_at": interview.finished_at,
             "score": feedback.score if feedback else None
         })
-    
+
     return result
+
+
+@router.get("/{interview_id}")
+def get_interview_details(
+    interview_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get full interview details including messages and feedback"""
+    from models import Feedback
+
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.user_id == current_user.id
+    ).first()
+
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.interview_id == interview_id)
+        .order_by(Message.timestamp)
+        .all()
+    )
+
+    user_answers_count = sum(1 for m in messages if m.role == "user")
+
+    feedback = db.query(Feedback).filter(
+        Feedback.interview_id == interview_id
+    ).first()
+
+    return {
+        "id": str(interview.id),
+        "stack": interview.stack,
+        "difficulty": interview.difficulty,
+        "status": interview.status,
+        "messages": [
+            {"id": str(m.id), "role": m.role, "content": m.content}
+            for m in messages
+        ],
+        "current_question_number": user_answers_count + 1,
+        "total_questions": len(interview.questions or []),
+        "feedback": feedback.analysis if feedback else None,
+    }

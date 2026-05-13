@@ -15,7 +15,7 @@ app.secret_key = "supersecretkey_for_session"
 CORS(app)
 
 # ================= НАСТРОЙКИ GigaChat =================
-GIGACHAT_CREDENTIALS = "MDE5ZDRmMmMtM2Q3Zi03MmExLWE4NzEtMTMyNDdmMWNjYzZhOjUxZWQ0ZGViLWFlZDktNDZjMi1iZjkwLWM1ODAxNzBjMDFiMg=="
+GIGACHAT_CREDENTIALS = "                                                                                                   MDE5ZDRmMmMtM2Q3Zi03MmExLWE4NzEtMTMyNDdmMWNjYzZhOjUxZWQ0ZGViLWFlZDktNDZjMi1iZjkwLWM1ODAxNzBjMDFiMg=="
 MODEL = "GigaChat:latest"
 REQUEST_TIMEOUT = 30
 

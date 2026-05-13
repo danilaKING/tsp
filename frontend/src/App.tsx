@@ -1,7 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './App.css';
 import LoginPage from './pages/LoginPage';
-import { startInterview, sendAnswer, generateFeedback, getUserInterviews } from './api';
+import { startInterview, sendAnswer, generateFeedback, getUserInterviews, getHint, deleteInterview, getInterviewDetails } from './api';
+import { submitMetrics } from './api';
+import NotificationContainer from './components/NotificationContainer';
+import { NotificationProps } from './components/Notification';
+import CodeEditorModal from './components/CodeEditorModal';
 
 // Types
 interface Message {
@@ -27,6 +32,14 @@ interface InterviewHistoryItem {
     score: number | null;
 }
 
+const initialMessages: Message[] = [
+    {
+        id: '0',
+        text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.',
+        type: 'assistant',
+    },
+];
+
 const App: React.FC = () => {
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,9 +47,7 @@ const App: React.FC = () => {
     const [history, setHistory] = useState<InterviewHistoryItem[]>([]);
 
     // Interview state
-    const [messages, setMessages] = useState<Message[]>([
-        { id: '0', text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.', type: 'assistant' }
-    ]);
+    const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [stack, setStack] = useState('Python');
     const [difficulty, setDifficulty] = useState('Лёгкий');
     const [answer, setAnswer] = useState('');
@@ -47,7 +58,42 @@ const App: React.FC = () => {
     const [statusText, setStatusText] = useState('⏳ Ожидание начала интервью');
     const [feedback, setFeedback] = useState<FeedbackData | null>(null);
 
+    // Notification state
+    const [notifications, setNotifications] = useState<NotificationProps[]>([]);
+
     const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    const [csat, setCsat] = useState(5);
+    const [ces, setCes] = useState(7);
+    const [nps, setNps] = useState(10);
+    const [metricComment, setMetricComment] = useState('');
+    const [metricsSubmitted, setMetricsSubmitted] = useState(false);
+
+    // Code editor state
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [codeAnswer, setCodeAnswer] = useState('');
+
+    const stackToLanguage = (stack: string): string => {
+        const map: Record<string, string> = {
+            'Python': 'python',
+            'JavaScript': 'javascript',
+            'SQL': 'sql',
+            'Алгоритмы': 'python',   
+        };
+        return map[stack] || 'python';
+    };
+
+    // Show notification helper
+    const showNotification = (type: 'error' | 'success' | 'warning' | 'info', message: string, duration: number = 4000) => {
+        const id = `notif-${Date.now()}-${Math.random()}`;
+        const notification: NotificationProps = { id, type, message, duration, onClose: removeNotification };
+        setNotifications(prev => [...prev, notification]);
+    };
+
+    // Remove notification helper
+    const removeNotification = (id: string) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    };
 
     // Check for existing token on mount
     useEffect(() => {
@@ -76,20 +122,37 @@ const App: React.FC = () => {
 
     const resetInterview = () => {
         setMessages([
-            { id: '0', text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.', type: 'assistant' }
+            {
+                id: Date.now().toString(),
+                text: '👋 Нажмите «Начать интервью», чтобы начать собеседование. Выберите стек и сложность.',
+                type: 'assistant',
+            },
         ]);
+        setAnswer('');
         setInterviewId(null);
         setIsInterviewActive(false);
+        setIsLoading(false);
         setFeedback(null);
         setStatusText('⏳ Ожидание начала интервью');
+        setMetricsSubmitted(false);
+        setNotifications([]);
+        setCsat(5);
+        setCes(7);
+        setNps(10);
+        setMetricComment('');
     };
 
     // Start interview
     const handleStartInterview = async () => {
-        setMessages([{ id: Date.now().toString(), text: '⏳ Запуск интервью... Пожалуйста, подождите.', type: 'assistant' }]);
+        setMessages([]);
+        setAnswer('');
+        setInterviewId(null);
         setIsLoading(true);
         setIsInterviewActive(false);
         setFeedback(null);
+        setNotifications([]);
+        setMetricsSubmitted(false);
+        setStatusText('⏳ Запуск интервью...');
 
         try {
             const data = await startInterview(stack, difficulty);
@@ -98,9 +161,85 @@ const App: React.FC = () => {
             setIsInterviewActive(true);
             setStatusText('🎙️ Интервью идёт. Отвечайте на вопросы.');
         } catch (err: any) {
-            setMessages([{ id: Date.now().toString(), text: `❌ Ошибка: ${err.message}`, type: 'assistant' }]);
+            showNotification('error', `Не удалось начать интервью: ${err.message}`);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleGetHint = async () => {
+        if (!interviewId || !isInterviewActive || isLoading) return;
+
+        setIsLoading(true);
+        setStatusText('💡 Получаем подсказку...');
+
+        try {
+            const data = await getHint(interviewId);
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    id: `hint-${Date.now()}`,
+                    text: `**Подсказка:** ${data.hint}`,
+                    type: 'assistant',
+                },
+            ]);
+
+            setStatusText('🎙️ Интервью идёт.');
+        } catch (err: any) {
+            showNotification('error', `Ошибка получения подсказки: ${err.message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeleteInterview = async (id: string) => {
+        if (!window.confirm('Вы уверены, что хотите удалить это интервью?')) return;
+        try {
+            await deleteInterview(id);
+            setHistory(prev => prev.filter(item => item.id !== id));
+            showNotification('success', 'Интервью успешно удалено');
+        } catch (err: any) {
+            showNotification('error', `Ошибка удаления: ${err.message}`);
+        }
+    };
+
+    const handleResumeInterview = async (item: InterviewHistoryItem) => {
+        try {
+            const data = await getInterviewDetails(item.id);
+
+            const loadedMessages: Message[] = data.messages.map((m: { id: string; role: string; content: string }) => ({
+                id: m.id,
+                text: m.content,
+                type: m.role as 'user' | 'assistant',
+            }));
+
+            setMessages(loadedMessages.length > 0 ? loadedMessages : initialMessages);
+            setInterviewId(item.id);
+            setStack(item.stack);
+            setDifficulty(item.difficulty);
+            setAnswer('');
+            setFeedback(null);
+            setMetricsSubmitted(false);
+            setNotifications([]);
+
+            if (item.status === 'active') {
+                setIsInterviewActive(true);
+                setStatusText('🎙️ Интервью идёт. Отвечайте на вопросы.');
+            } else if (item.status === 'completed') {
+                setIsInterviewActive(false);
+                setStatusText('✅ Интервью завершено.');
+                if (data.feedback) {
+                    setFeedback(data.feedback);
+                }
+            } else {
+                setIsInterviewActive(false);
+                setStatusText('❌ Интервью прервано.');
+            }
+
+            setShowHistory(false);
+        } catch (err: any) {
+            showNotification('error', `Ошибка загрузки интервью: ${err.message}`);
         }
     };
 
@@ -117,23 +256,35 @@ const App: React.FC = () => {
         try {
             const data = await sendAnswer(interviewId, userAnswer);
 
-            // Add AI reaction
-            if (data.ai_reaction) {
-                setMessages(prev => [...prev, { id: Date.now().toString(), text: data.ai_reaction, type: 'assistant' }]);
+            // Add AI reaction, but hide technical/mock transition text
+            const isTechnicalReaction =
+                data.ai_reaction &&
+                data.ai_reaction.toLowerCase().includes('next') &&
+                data.ai_reaction.toLowerCase().includes('хороший ответ');
+
+            if (data.ai_reaction && !isTechnicalReaction) {
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        id: Date.now().toString(),
+                        text: data.ai_reaction,
+                        type: 'assistant',
+                    },
+                ]);
             }
 
             if (data.type === 'finished') {
                 // Interview completed
                 setIsInterviewActive(false);
                 setStatusText('✅ Интервью завершено. Генерация отчёта...');
-                
+
                 // Generate feedback
                 try {
                     const feedbackData = await generateFeedback(interviewId);
                     setFeedback(feedbackData.analysis);
                     setStatusText('✅ Интервью завершено. Отчёт готов!');
                 } catch (err: any) {
-                    setMessages(prev => [...prev, { id: Date.now().toString(), text: `❌ Ошибка генерации отчёта: ${err.message}`, type: 'assistant' }]);
+                    showNotification('error', `Ошибка генерации отчёта: ${err.message}`);
                 }
             } else {
                 // Next question
@@ -143,7 +294,7 @@ const App: React.FC = () => {
                 setStatusText('🎙️ Интервью идёт.');
             }
         } catch (err: any) {
-            setMessages(prev => [...prev, { id: Date.now().toString(), text: `❌ Ошибка: ${err.message}`, type: 'assistant' }]);
+            showNotification('error', `Ошибка при отправке ответа: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -156,8 +307,75 @@ const App: React.FC = () => {
             setHistory(data);
             setShowHistory(true);
         } catch (err: any) {
-            alert(`Ошибка загрузки истории: ${err.message}`);
+            showNotification('error', `Ошибка загрузки истории: ${err.message}`);
         }
+    };
+
+    const handleDownloadReport = () => {
+        if (!feedback) return;
+
+        const reportText = `
+    AI Mock Interview — отчёт
+
+    Оценка: ${feedback.score}/100
+
+    Сильные стороны:
+    ${feedback.pros.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+
+    Зоны роста:
+    ${feedback.cons.map((item, index) => `${index + 1}. ${item}`).join('\n')}
+
+    Рекомендации:
+    ${feedback.recommendations
+                .map((item, index) => `${index + 1}. ${item.topic}: ${item.description}`)
+                .join('\n')}
+    `.trim();
+
+        const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `interview-report-${new Date().toISOString().slice(0, 10)}.txt`;
+        link.click();
+
+        URL.revokeObjectURL(url);
+    };
+
+    const handleSubmitMetrics = async () => {
+        if (!interviewId) return;
+
+        try {
+            await submitMetrics({
+                interview_id: interviewId,
+                csat,
+                ces,
+                nps,
+                comment: metricComment,
+            });
+
+            setMetricsSubmitted(true);
+            showNotification('success', 'Спасибо за оценку!');
+        } catch (err: any) {
+            showNotification('error', `Ошибка отправки оценки: ${err.message}`);
+        }
+    };
+
+    const openCodeEditor = () => {
+        setCodeAnswer(''); 
+        setIsEditorOpen(true);
+    };
+
+    const handleSaveCode = (code: string, lang: string) => {
+        setAnswer(prev => {
+            const trimmed = prev.trim();
+            const codeBlock = `\`\`\`${lang}\n${code}\n\`\`\``;
+            return trimmed ? `${trimmed}\n${codeBlock}` : codeBlock;
+        });
+    };
+
+    const handleCloseEditor = () => {
+        setIsEditorOpen(false);
     };
 
     if (!isAuthenticated) {
@@ -166,11 +384,13 @@ const App: React.FC = () => {
 
     return (
         <div className="container">
+            <NotificationContainer notifications={notifications} onClose={removeNotification} />
+
             <header className="app-header">
                 <h1>AI Mock Interview</h1>
                 <div className="header-actions">
                     <button onClick={handleLoadHistory} className="btn-secondary">
-                        📋 История
+                        История
                     </button>
                     <button onClick={handleLogout} className="btn-logout">
                         Выйти
@@ -195,6 +415,7 @@ const App: React.FC = () => {
                                     <th>Сложность</th>
                                     <th>Статус</th>
                                     <th>Оценка</th>
+                                    <th>Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -203,8 +424,30 @@ const App: React.FC = () => {
                                         <td>{new Date(item.started_at).toLocaleDateString('ru-RU')}</td>
                                         <td>{item.stack}</td>
                                         <td>{item.difficulty}</td>
-                                        <td>{item.status === 'completed' ? '✅ Завершено' : item.status === 'active' ? '🔄 Активно' : '❌ Прервано'}</td>
+                                        <td>
+                                            {item.status === 'completed'
+                                                ? '✅ Завершено'
+                                                : item.status === 'active'
+                                                    ? '🔄 Активно'
+                                                    : '❌ Прервано'}
+                                        </td>
                                         <td>{item.score !== null ? `${item.score}/100` : '—'}</td>
+                                        <td className="history-actions">
+                                            {item.status !== 'aborted' && (
+                                                <button
+                                                    onClick={() => handleResumeInterview(item)}
+                                                    className="btn-secondary"
+                                                >
+                                                    {item.status === 'active' ? 'Продолжить' : 'Просмотреть'}
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDeleteInterview(item.id)}
+                                                className="btn-danger"
+                                            >
+                                                Удалить
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -233,46 +476,68 @@ const App: React.FC = () => {
                     <div className="chat-box" ref={chatContainerRef}>
                         {messages.map((msg) => (
                             <div key={msg.id} className={`message ${msg.type}`}>
-                                <div className="message-bubble">{msg.text}</div>
+                                <div className="message-bubble">
+                                    {msg.type === 'assistant' ? (
+                                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                                    ) : (
+                                        msg.text
+                                    )}
+                                </div>
                             </div>
                         ))}
                         {isLoading && <div className="loading-indicator">{statusText}</div>}
                     </div>
 
-                    {isInterviewActive && (
-                        <div className="input-area">
-                            <input
-                                type="text"
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSendAnswer()}
-                                className="answer-input"
-                                placeholder="Ваш ответ..."
-                                disabled={!isInterviewActive || isLoading}
-                            />
-                            <button onClick={handleSendAnswer} disabled={!isInterviewActive || isLoading} className="btn-primary">
-                                Отправить
-                            </button>
-                        </div>
-                    )}
+                        {isInterviewActive && (
+                            <div className="input-area">
+                                <input
+                                    type="text"
+                                    value={answer}
+                                    onChange={(e) => setAnswer(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendAnswer()}
+                                    className="answer-input"
+                                    placeholder="Ваш ответ..."
+                                    disabled={!isInterviewActive || isLoading}
+                                />
+                                <button
+                                    onClick={openCodeEditor}
+                                    disabled={!isInterviewActive || isLoading}
+                                    className="btn-code-editor"
+                                    title="Открыть редактор кода"
+                                >
+                                    {'</>'}
+                                </button>
+                                <button
+                                    onClick={handleGetHint}
+                                    disabled={!isInterviewActive || isLoading}
+                                    className="btn-hint"
+                                    title="Получить подсказку"
+                                >
+                                    Подсказка
+                                </button>
+                                <button onClick={handleSendAnswer} disabled={!isInterviewActive || isLoading} className="btn-primary">
+                                    Отправить
+                                </button>
+                            </div>
+                        )}
 
                     {feedback && (
                         <div className="feedback-section">
-                            <h2>📊 Результаты интервью</h2>
+                            <h2>✔ Результаты интервью</h2>
                             <div className="score-display">{feedback.score}/100</div>
-                            
+
                             <div className="feedback-grid">
                                 <div className="feedback-card pros">
-                                    <h3>✅ Сильные стороны</h3>
+                                    <h3>☑ Сильные стороны</h3>
                                     <ul>
                                         {feedback.pros.map((pro, idx) => (
                                             <li key={idx}>{pro}</li>
                                         ))}
                                     </ul>
                                 </div>
-                                
+
                                 <div className="feedback-card cons">
-                                    <h3>⚠️ Зоны роста</h3>
+                                    <h3>⚠ Зоны роста</h3>
                                     <ul>
                                         {feedback.cons.map((con, idx) => (
                                             <li key={idx}>{con}</li>
@@ -282,7 +547,7 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="recommendations">
-                                <h3>📚 Рекомендации</h3>
+                                <h3>🕮 Рекомендации</h3>
                                 {feedback.recommendations.map((rec, idx) => (
                                     <div key={idx} className="recommendation-item">
                                         <strong>{rec.topic}</strong>
@@ -291,11 +556,86 @@ const App: React.FC = () => {
                                 ))}
                             </div>
 
-                            <button onClick={resetInterview} className="btn-primary">
-                                Начать новое интервью
+                            <div className="feedback-actions">
+                                <button onClick={handleDownloadReport} className="btn-secondary">
+                                    Скачать отчёт
+                                </button>
+
+                                <button onClick={handleStartInterview} className="btn-primary">
+                                    Начать новое интервью
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {feedback && !metricsSubmitted && (
+                        <div className="metrics-card">
+                            <h3>Оцените интервью</h3>
+                            <p className="metrics-subtitle">
+                                Помогите нам понять качество AI-интервьюера по CSAT, CES и NPS.
+                            </p>
+
+                            <div className="metrics-grid">
+                                <label className="metric-field">
+                                    <span>CSAT — качество вопросов AI</span>
+                                    <select value={csat} onChange={(e) => setCsat(Number(e.target.value))}>
+                                        <option value={1}>1 — Очень плохо</option>
+                                        <option value={2}>2 — Плохо</option>
+                                        <option value={3}>3 — Нормально</option>
+                                        <option value={4}>4 — Хорошо</option>
+                                        <option value={5}>5 — Отлично</option>
+                                    </select>
+                                </label>
+
+                                <label className="metric-field">
+                                    <span>CES — насколько легко было пройти интервью</span>
+                                    <select value={ces} onChange={(e) => setCes(Number(e.target.value))}>
+                                        <option value={1}>1 — Очень сложно</option>
+                                        <option value={2}>2</option>
+                                        <option value={3}>3</option>
+                                        <option value={4}>4</option>
+                                        <option value={5}>5</option>
+                                        <option value={6}>6</option>
+                                        <option value={7}>7 — Очень легко</option>
+                                    </select>
+                                </label>
+
+                                <label className="metric-field">
+                                    <span>NPS — порекомендовали бы другу</span>
+                                    <select value={nps} onChange={(e) => setNps(Number(e.target.value))}>
+                                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(value => (
+                                            <option key={value} value={value}>{value}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <textarea
+                                className="metric-comment"
+                                placeholder="Комментарий необязательно"
+                                value={metricComment}
+                                onChange={(e) => setMetricComment(e.target.value)}
+                            />
+
+                            <button onClick={handleSubmitMetrics} className="btn-primary">
+                                Отправить оценку
                             </button>
                         </div>
                     )}
+
+                    {metricsSubmitted && (
+                        <div className="feedback-card">
+                            Спасибо! Оценка интервью сохранена.
+                        </div>
+                    )}
+
+                        <CodeEditorModal
+                            isOpen={isEditorOpen}
+                            initialCode={codeAnswer}
+                            language={stackToLanguage(stack)}
+                            onClose={handleCloseEditor}
+                            onSave={handleSaveCode}
+                        />
                 </>
             )}
         </div>

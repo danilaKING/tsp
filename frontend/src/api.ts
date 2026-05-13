@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem("token");
@@ -70,6 +70,33 @@ export async function sendAnswer(interviewId: string, answer: string) {
   return response.json();
 }
 
+export async function getHint(interviewId: string) {
+  const response = await fetch(`${API_URL}/interviews/hint`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ interview_id: interviewId }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to get hint");
+  }
+
+  return response.json();
+}
+// Удаление интервью
+export async function deleteInterview(interviewId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/interviews/${interviewId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to delete interview");
+  }
+  // 204 No Content - успех, возвращать нечего
+}
 export async function getUserInterviews() {
   const response = await fetch(`${API_URL}/interviews/my`, {
     headers: getAuthHeaders(),
@@ -78,6 +105,19 @@ export async function getUserInterviews() {
   if (!response.ok) {
     const data = await response.json();
     throw new Error(data.detail || "Failed to fetch interviews");
+  }
+
+  return response.json();
+}
+
+export async function getInterviewDetails(interviewId: string) {
+  const response = await fetch(`${API_URL}/interviews/${interviewId}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.detail || "Failed to fetch interview details");
   }
 
   return response.json();
@@ -94,6 +134,28 @@ export async function generateFeedback(interviewId: string) {
   if (!response.ok) {
     const data = await response.json();
     throw new Error(data.detail || "Failed to generate feedback");
+  }
+
+  return response.json();
+}
+
+
+export async function submitMetrics(data: {
+  interview_id: string;
+  csat: number;
+  ces: number;
+  nps: number;
+  comment?: string;
+}) {
+  const response = await fetch(`${API_URL}/metrics/submit`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to submit metrics");
   }
 
   return response.json();

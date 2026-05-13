@@ -39,6 +39,7 @@ async def generate_feedback(
         )
     
     # Check if feedback already exists
+    
     existing_feedback = db.query(Feedback).filter(
         Feedback.interview_id == UUID(interview_id)
     ).first()
@@ -69,7 +70,7 @@ async def generate_feedback(
     
     # Call GigaChat to generate report
     report_text = await gigachat_service.generate_final_report(transcript)
-    
+    # print("GigaChat response:", report_text)  # Debugging log
     # Parse JSON from GigaChat response
     try:
         # Try to extract JSON from the response
@@ -87,16 +88,31 @@ async def generate_feedback(
             detail=f"Failed to parse GigaChat response as JSON: {str(e)}"
         )
     
-    # Save feedback
+
+    analysis_to_save = {
+            "score": analysis.get("score", 0),
+            "pros": analysis.get("pros", []),
+            "cons": analysis.get("cons", []),
+            # Проверяем оба варианта имени поля
+            "recommendations": analysis.get("recommendations", analysis.get("improvements", []))
+        }
+
     feedback = Feedback(
         interview_id=interview.id,
         score=analysis.get("score", 0),
-        analysis={
-            "pros": analysis.get("pros", []),
-            "cons": analysis.get("cons", []),
-            "recommendations": analysis.get("recommendations", [])
-        }
+        analysis=analysis_to_save  # Сохраняем полный словарь
     )
+
+    # Save feedback
+    # feedback = Feedback(
+    #     interview_id=interview.id,
+    #     score=analysis.get("score", 0),
+    #     analysis={
+    #         "pros": analysis.get("pros", []),
+    #         "cons": analysis.get("cons", []),
+    #         "recommendations": analysis.get("recommendations", [])
+    #     }
+    # )
     db.add(feedback)
     db.commit()
     db.refresh(feedback)

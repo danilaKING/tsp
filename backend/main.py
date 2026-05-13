@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import auth_router, interview_router, feedback_router
+from routers import metrics_router
 
 app = FastAPI(
     title="AI Mock Interviewer",
@@ -11,7 +12,14 @@ app = FastAPI(
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite default ports
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3000",   # альтернативный dev-порт
+        "http://localhost",        # Docker (nginx, порт 80)
+        "http://localhost:80",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,7 +29,7 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(interview_router.router)
 app.include_router(feedback_router.router)
-
+app.include_router(metrics_router.router)
 
 @app.get("/")
 def root():

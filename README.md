@@ -246,37 +246,7 @@ tsp-review/
 
 ---
 
-## История изменений
 
-### [develop] — текущая ветка
-
-#### Исправления (Bugs)
-
-- **GigaChat критикует эталонный ответ вместо ответа кандидата**
-  Переформулирован промпт в `gigachat_service.evaluate_answer()`:
-  добавлена явная инструкция оценивать только `Ответ кандидата`, а правильный ответ помечен как внутренний критерий оценки (`только для твоей оценки, кандидат его не видит`).
-  Файл: `backend/services/gigachat_service.py`
-
-#### Новые возможности
-
-- **Возврат к интервью из истории**
-  - Новый endpoint `GET /interviews/{interview_id}` возвращает полный список сообщений, текущий номер вопроса и фидбек (если есть).
-    Файл: `backend/routers/interview_router.py`
-  - Новая функция `getInterviewDetails()` в HTTP-клиенте.
-    Файл: `frontend/src/api.ts`
-  - В таблице истории появились кнопки **«Продолжить»** (активные интервью) и **«Просмотреть»** (завершённые). При нажатии восстанавливается чат, статус и фидбек.
-    Файл: `frontend/src/App.tsx`
-
-- **Докеризация**
-  - `backend/Dockerfile` — образ на Python 3.11-slim, при старте автоматически засевает вопросы.
-  - `frontend/Dockerfile` — multi-stage: Node 20 (сборка) → Nginx 1.27 (раздача).
-  - `frontend/nginx.conf` — конфигурация Nginx для SPA (fallback на index.html).
-  - `docker-compose.yml` — оркестрация трёх сервисов: PostgreSQL, backend, frontend.
-  - `backend/.dockerignore`, `frontend/.dockerignore` — исключения для Docker-контекста.
-  - `frontend/src/api.ts` — `API_URL` теперь читается из `VITE_API_URL` (build-arg) с fallback на `http://localhost:5000`.
-  - `backend/main.py` — CORS расширен до `http://localhost` и `http://localhost:80` для поддержки Nginx.
-
----
 
 ### Ранее (зафиксировано в main)
 
